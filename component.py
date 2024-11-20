@@ -1,4 +1,4 @@
-import requests
+from flask import Flask
 
 import socket
 import json
@@ -10,6 +10,8 @@ from consts import *
 from star import Star
 
 class Component:
+
+
     def __init__(self):
         self.com_uuid = int(random.randint(0, 9000) + 1000)
         self.star_uuid = None
@@ -20,28 +22,6 @@ class Component:
         self.star = None
         self.star_integration_time = None
         self.last_star_interaction_time = None
-
-    def start(self):
-        print("Component started", self.com_uuid)
-        response = None
-        for _ in range(2):
-            self.broadcast()
-            response = self.await_response()
-            if response:
-                "response received. Requesting registration"
-                self.request_registration(response)
-                if response.status_code == 200:
-                    print(f"Response: {response.status_code}. Registering with Star")
-                    self.register(response)
-                else:
-                    print(f"Response: {response.status_code}. Registration failed")
-        if not response:
-            print("Creating a new Star")
-            self.init_star()
-            listen_thread = threading.Thread(target=self.listen_for_hello)
-            listen_thread.start()
-            self.listen_for_hello()
-        print("Shutting down", self.com_uuid)
 
     @staticmethod
     def broadcast():
@@ -73,7 +53,7 @@ class Component:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(('', STARPORT))
         while True:
-            data, address = sock.recvfrom(1024)
+            data, (address, port) = sock.recvfrom(1024)
             message = data.decode('utf-8').strip('\x00')
             print(f"Received message: {message} from {address}")
             # Check if the message is "HELLO?"
@@ -86,7 +66,7 @@ class Component:
                     "sol-tcp": STARPORT,
                     "component": self.sol_uuid}
                 response_data = json.dumps(response).encode('utf-8')
-                sock.sendto(response_data, address)
+                sock.sendto(response_data, (address, STARPORT))
                 print(f"Sent response to {address}")
 
     def init_star(self):
@@ -100,10 +80,27 @@ class Component:
     def register(self, response):
         pass
 
+def start_component(component):
+    print("Component started", component.com_uuid)
+    response = None
+    for _ in range(2):
+        component.broadcast()
+        response = component.await_response()
+        if response:
+            print("response received. Requesting registration")
+            component.request_registration(response)
+            break
+    if not response:
+        print("Creating a new Star")
+        component.init_star()
+        listen_thread = threading.Thread(target=component.listen_for_hello)
+        listen_thread.start()
+    else:
+        print("Shutting down", component.com_uuid)
+
 if __name__ == '__main__':
     component = Component()
-    component.start()
+    start_component(component)
 
     component2 = Component()
-    component2.start()
-
+    start_component(component2)
