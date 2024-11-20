@@ -1,4 +1,4 @@
-from flask import Flask
+import requests
 
 import socket
 import json
@@ -7,13 +7,13 @@ import datetime
 import threading
 
 from consts import *
-from star import Star
+from sol import SOL, app
 
 class Component:
 
 
     def __init__(self):
-        self.com_uuid = int(random.randint(0, 9000) + 1000)
+        self.com_uuid = random.randint(1000, 9999)
         self.star_uuid = None
         self.sol_uuid = None
         self.sol_ip = None
@@ -36,7 +36,7 @@ class Component:
     def await_response():
         print("Waiting for response")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(('', STARPORT))
+        sock.bind(('', 8014))
         sock.settimeout(3)
         try:
             data, addr = sock.recvfrom(BUFFER_SIZE)
@@ -49,36 +49,28 @@ class Component:
         finally:
             sock.close()
 
-    def listen_for_hello(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(('', STARPORT))
-        while True:
-            data, (address, port) = sock.recvfrom(1024)
-            message = data.decode('utf-8').strip('\x00')
-            print(f"Received message: {message} from {address}")
-            # Check if the message is "HELLO?"
-            if message == "HELLO?":
-                # Respond with the star information
-                response = {
-                    "star": self.star_uuid,
-                    "sol": self.sol_uuid,
-                    "sol-ip": self.sol_ip,
-                    "sol-tcp": STARPORT,
-                    "component": self.sol_uuid}
-                response_data = json.dumps(response).encode('utf-8')
-                sock.sendto(response_data, (address, STARPORT))
-                print(f"Sent response to {address}")
-
-    def init_star(self):
-        self.star = Star(self.sol_uuid, self.sol_ip, TEAM_ID)
-        self.star_integration_time = datetime.datetime.now()
-        self.last_star_interaction_time = datetime.datetime.now()
-
     def request_registration(self, response):
-        pass
+        url = f'http://{response["sol-ip"]}:{STARPORT}/vs/v1/system/'
+        data = {
+            'star': 'star-uuid',
+            'sol': 'sol-uuid',
+            'component': 'component-uuid',
+            'com-ip': '192.168.1.1',
+            'com-tcp': '8080',
+            'status': 'active'
+        }
+
+        registration_response = requests.post(url, json=data)
+
+        # Access the status code
+        status_code = response.status_code
+        print(f'Status Code: {status_code}')
+        if status_code == 200:
+            self.register(response)
 
     def register(self, response):
         pass
+
 
 def start_component(component):
     print("Component started", component.com_uuid)
@@ -91,16 +83,15 @@ def start_component(component):
             component.request_registration(response)
             break
     if not response:
-        print("Creating a new Star")
-        component.init_star()
-        listen_thread = threading.Thread(target=component.listen_for_hello)
-        listen_thread.start()
+        print("Becoming SOL")
+        # this component becomes SOL. starting the broadcast listening thread and the flask app thread
+        sol = SOL(component.com_uuid, component.star_uuid, component.sol_uuid, component.sol_ip, component.sol_tcp, component.status)
     else:
         print("Shutting down", component.com_uuid)
 
 if __name__ == '__main__':
-    component = Component()
-    start_component(component)
+    component1 = Component()
+    start_component(component1)
 
     component2 = Component()
     start_component(component2)
